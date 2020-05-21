@@ -6,7 +6,14 @@ import 'package:flutter_modular/src/interfaces/route_guard.dart';
 import 'package:flutter_modular/src/transitions/transitions.dart';
 
 typedef RouteBuilder<T> = MaterialPageRoute<T> Function(
-    WidgetBuilder, RouteSettings);
+  WidgetBuilder,
+  RouteSettings,
+);
+
+typedef PageRouteCustomBuilder<T> = PageRoute<T> Function(
+  WidgetBuilder,
+  RouteSettings,
+);
 
 _debugPrintModular(String text) {
   if (Modular.debugMode) {
@@ -23,6 +30,7 @@ class Router<T> {
   final TransitionType transition;
   final CustomTransition customTransition;
   final RouteBuilder<T> routeGenerator;
+  final PageRouteCustomBuilder<T> pageRouteGenerator;
   final String modulePath;
 
   Router(
@@ -33,6 +41,7 @@ class Router<T> {
     this.params,
     this.transition = TransitionType.defaultTransition,
     this.routeGenerator,
+    this.pageRouteGenerator,
     this.customTransition,
     this.modulePath,
   }) {
@@ -47,6 +56,7 @@ class Router<T> {
     if (module != null && child != null)
       throw ArgumentError('You should provide only [module] or [child]');
   }
+
   Map<
       TransitionType,
       PageRouteBuilder<T> Function(
@@ -67,16 +77,17 @@ class Router<T> {
     TransitionType.leftToRightWithFade: leftToRightWithFade,
   };
 
-  Router<T> copyWith(
-      {Widget Function(BuildContext context, ModularArguments args) child,
-      String routerName,
-      ChildModule module,
-      Map<String, String> params,
-      List<RouteGuard> guards,
-      TransitionType transition,
-      RouteBuilder routeGenerator,
-      String modulePath,
-      CustomTransition customTransition}) {
+  Router<T> copyWith({
+    Widget Function(BuildContext context, ModularArguments args) child,
+    String routerName,
+    ChildModule module,
+    Map<String, String> params,
+    List<RouteGuard> guards,
+    TransitionType transition,
+    RouteBuilder routeGenerator,
+    String modulePath,
+    CustomTransition customTransition,
+  }) {
     return Router<T>(
       routerName ?? this.routerName,
       child: child ?? this.child,
@@ -85,6 +96,7 @@ class Router<T> {
       modulePath: modulePath ?? this.modulePath,
       guards: guards ?? this.guards,
       routeGenerator: routeGenerator ?? this.routeGenerator,
+      pageRouteGenerator: pageRouteGenerator ?? this.pageRouteGenerator,
       transition: transition ?? this.transition,
       customTransition: customTransition ?? this.customTransition,
     );
@@ -105,12 +117,14 @@ class Router<T> {
     }).toList();
   }
 
-  Widget _disposableGenerate(BuildContext context,
-      {Map<String, ChildModule> injectMap,
-      bool isRouterOutlet,
-      String path,
-      ModularArguments args}) {
-    var actual = ModalRoute.of(context);
+  Widget _disposableGenerate(
+    BuildContext context, {
+    Map<String, ChildModule> injectMap,
+    bool isRouterOutlet,
+    String path,
+    ModularArguments args,
+  }) {
+    final actual = ModalRoute.of(context);
     final _old = Modular.old;
 
     Widget page = _DisposableWidget(
@@ -140,10 +154,11 @@ class Router<T> {
     return page;
   }
 
-  Route<T> getPageRoute(
-      {Map<String, ChildModule> injectMap,
-      RouteSettings settings,
-      bool isRouterOutlet}) {
+  Route<T> getPageRoute({
+    Map<String, ChildModule> injectMap,
+    RouteSettings settings,
+    bool isRouterOutlet,
+  }) {
     final arguments = Modular.args.copy();
 
     if (this.transition == TransitionType.custom &&
@@ -161,13 +176,18 @@ class Router<T> {
         transitionDuration: this.customTransition.transitionDuration,
       );
     } else if (this.transition == TransitionType.defaultTransition) {
-      var widgetBuilder = (context) => _disposableGenerate(context,
+      final widgetBuilder = (context) => _disposableGenerate(context,
           args: arguments,
           injectMap: injectMap,
           path: settings.name,
           isRouterOutlet: isRouterOutlet);
+
       if (routeGenerator != null) {
         return routeGenerator(widgetBuilder, settings);
+      }
+
+      if (pageRouteGenerator != null) {
+        return pageRouteGenerator(widgetBuilder, settings);
       }
       return Modular.isCupertino
           ? CupertinoPageRoute<T>(
@@ -179,7 +199,7 @@ class Router<T> {
               builder: widgetBuilder,
             );
     } else {
-      var selectTransition = _transitions[this.transition];
+      final selectTransition = _transitions[this.transition];
       return selectTransition((context, args) {
         return _disposableGenerate(context,
             args: args,
@@ -209,13 +229,18 @@ enum TransitionType {
 
 class CustomTransition {
   final Widget Function(
-          BuildContext, Animation<double>, Animation<double>, Widget)
-      transitionBuilder;
+    BuildContext,
+    Animation<double>,
+    Animation<double>,
+    Widget,
+  ) transitionBuilder;
+
   final Duration transitionDuration;
 
-  CustomTransition(
-      {@required this.transitionBuilder,
-      this.transitionDuration = const Duration(milliseconds: 300)});
+  CustomTransition({
+    @required this.transitionBuilder,
+    this.transitionDuration = const Duration(milliseconds: 300),
+  });
 }
 
 class _DisposableWidget extends StatefulWidget {
